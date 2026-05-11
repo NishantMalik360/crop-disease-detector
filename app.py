@@ -1,19 +1,23 @@
 import os
-# Force legacy settings BEFORE any other imports
+# 1. Force Legacy Keras BEFORE any other imports
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
+from tensorflow.keras.layers import InputLayer
 import numpy as np
 import json
 import gdown
+import urllib.parse
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
+# Model and Data Paths
 MODEL_PATH = 'models/crop_disease_model.h5'
+JSON_PATH = 'models/class_indices.json'
 
-# Model download logic
+# --- MODEL DOWNLOAD ---
 if not os.path.exists(MODEL_PATH):
     print("Downloading model...")
     os.makedirs('models', exist_ok=True) 
@@ -21,62 +25,30 @@ if not os.path.exists(MODEL_PATH):
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
 
-# --- THE ULTIMATE VERSION-PROOF LOADING ---
+# --- MODEL LOADING WITH BYPASS ---
 try:
-    print("Attempting to load model...")
-    # Kisi bhi extra import (keras.models) ki bajaye direct tf.keras use karein
-    # compile=False karne se batch_shape error bypass ho jata hai
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    print("Success: Model loaded!")
+    print("Attempting model load...")
+    model = tf.keras.models.load_model(
+        MODEL_PATH, 
+        custom_objects={'InputLayer': InputLayer}, 
+        compile=False
+    )
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    print("SUCCESS: Model loaded!")
 except Exception as e:
     print(f"Loading error: {e}")
-    # Agar error aaye toh ye process ko crash nahi karega
     model = None
 
-if model:
-    # Load hone ke baad manually compile karein
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+# --- LOAD CLASS NAMES ---
+try:
+    with open(JSON_PATH, 'r', encoding='utf-8') as f:
+        class_indices = json.load(f)
+    class_names = {v: k for k, v in class_indices.items()}
+except Exception as e:
+    print(f"JSON Error: {e}")
+    class_names = {}
 
-# Load Class Names
-with open('models/class_indices.json', 'r', encoding='utf-8') as f:
-    class_indices = json.load(f)
-class_names = {v: k for k, v in class_indices.items()}
-
-# --- ROUTES ---
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    if 'file' not in request.files:
-        return redirect(request.url)
-    file = request.files['file']
-    if file.filename == '':
-        return redirect(request.url)
-    
-    if file and model:
-        if not os.path.exists(app.config['UPLOAD_FOLDER']):
-            os.makedirs(app.config['UPLOAD_FOLDER'])
-            
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
-        
-        # PREDICTION using tf.keras.utils to be safe
-        img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
-        img_array = tf.keras.utils.img_to_array(img)
-        img_array = np.expand_dims(img_array, axis=0) / 255.0
-        
-        predictions = model.predict(img_array)
-        result_index = np.argmax(predictions)
-        disease = class_names[result_index]
-        
-        return render_template('result.html', disease=disease, image_path=filepath)
-    return "Model not loaded properly. Please check logs."
-
-if __name__ == '__main__':
-    app.run(debug=True)
-# Dictionary containing Causes, Fixes, and Tips (You will need to expand this for all 38 classes)
+# --- DISEASE INFO DATA ---
 DISEASE_INFO = {
     # --- APPLE ---
     "Apple___Apple_scab": {
@@ -273,18 +245,21 @@ DISEASE_INFO = {
     }
 }
 
+# --- PREDICTION FUNCTION ---
 def predict_image(img_path):
-    img = image.load_img(img_path, target_size=(224, 224))
-    img_array = image.img_to_array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    # tf.keras.utils use karna safe hai Render ke liye
+    img = tf.keras.utils.load_img(img_path, target_size=(224, 224))
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0) / 255.0
     
     predictions = model.predict(img_array)
     predicted_class_index = np.argmax(predictions[0])
     confidence = predictions[0][predicted_class_index] * 100
     
-    predicted_class = class_names[predicted_class_index]
+    predicted_class = class_names.get(predicted_class_index, "Unknown")
     return predicted_class, confidence
 
+# --- ROUTES ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -294,25 +269,27 @@ def index():
         if file.filename == '':
             return redirect(request.url)
         
-        if file:
+        if file and model:
+            if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                os.makedirs(app.config['UPLOAD_FOLDER'])
+            
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filepath)
             
             disease, confidence = predict_image(filepath)
             
-            # Handling out-of-dataset or low confidence images
             if confidence < 60.0:
-                google_search_query = urllib.parse.quote(f"What is this plant leaf disease?")
-                google_link = f"https://lens.google.com/upload?url={request.url_root}{filepath}"
-                return render_template('result.html', disease="Unknown / Not Confident", confidence=confidence, img_path=filepath, google_link=google_link)
+                google_link = f"https://lens.google.com/uploadbyurl?url={request.url_root}{filepath}"
+                return render_template('result.html', disease="Unknown / Low Confidence", 
+                                     confidence=confidence, img_path=filepath, google_link=google_link)
             
-            info = DISEASE_INFO.get(disease, {"cause": "Data missing", "fix": "Data missing", "tips": "Data missing"})
-            
-            return render_template('result.html', disease=disease, confidence=confidence, info=info, img_path=filepath)
+            info = DISEASE_INFO.get(disease, {"cause": "No data", "fix": "No data", "tips": "No data"})
+            return render_template('result.html', disease=disease, confidence=confidence, 
+                                 info=info, img_path=filepath)
             
     return render_template('index.html')
 
 if __name__ == '__main__':
-    if not os.path.exists('static/uploads'):
-        os.makedirs('static/uploads')
-    app.run(debug=True)
+    # Important: Render requires host 0.0.0.0 and dynamic port
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
