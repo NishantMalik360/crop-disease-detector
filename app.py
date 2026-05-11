@@ -228,12 +228,12 @@ if not os.path.exists(MODEL_PATH):
 # --- MODEL LOADING WITH BYPASS ---
 try:
     print("Attempting model load...")
-    # safe_mode=False aur InputLayer bypass dono use kar rahe hain
+    # Humne InputLayer ko direct tf se pass kiya hai
     model = tf.keras.models.load_model(
         MODEL_PATH, 
         compile=False, 
         safe_mode=False,
-        custom_objects={'InputLayer': InputLayer}
+        custom_objects={'InputLayer': tf.keras.layers.InputLayer} 
     )
     print("SUCCESS: Model loaded finally!")
 except Exception as e:
