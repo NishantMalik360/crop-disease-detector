@@ -8,12 +8,20 @@ import numpy as np
 import json
 import gdown
 
+# --- NEW SAFE IMPORT FOR KERAS ---
+try:
+    import keras
+    from keras.models import load_model
+except ImportError:
+    from tensorflow.keras.models import load_model
+# ---------------------------------
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
-# Model loading section
 MODEL_PATH = 'models/crop_disease_model.h5'
 
+# Model download logic (as before)
 if not os.path.exists(MODEL_PATH):
     print("Downloading model...")
     os.makedirs('models', exist_ok=True) 
@@ -21,25 +29,23 @@ if not os.path.exists(MODEL_PATH):
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
 
-# --- RECURSION ERROR FIX ---
-# Humne yahan 'try-except' ko simple kar diya hai
+# --- RECURSION-FREE LOADING ---
 try:
-    print("Attempting to load model...")
-    # compile=False is key for cross-version compatibility
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    print("Loading model with Keras 2 legacy mode...")
+    # direct load_model use kar rahe hain jo upar import kiya hai
+    model = load_model(MODEL_PATH, compile=False)
     print("Success: Model loaded!")
 except Exception as e:
-    print(f"Model load failed. Error: {e}")
-    # Agar ye fail hota hai, toh manually error throw karein loop banane ki jagah
-    raise e 
+    print(f"Direct load failed, trying tf.keras backup... Error: {e}")
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
-# Manually compile after loading
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Load Class Names
 with open('models/class_indices.json', 'r', encoding='utf-8') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
+
 
 # --- ROUTES ---
 @app.route('/')
