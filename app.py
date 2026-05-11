@@ -1,6 +1,8 @@
 import os
-# 1. Force Legacy Keras BEFORE any other imports
+# 1. Sabse pehle memory aur legacy settings (Keras 3 ko bypass karne ke liye)
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
@@ -10,47 +12,16 @@ import json
 import gdown
 import urllib.parse
 
+# 2. Memory saaf karein
+tf.keras.backend.clear_session()
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
-# Model and Data Paths
 MODEL_PATH = 'models/crop_disease_model.h5'
 JSON_PATH = 'models/class_indices.json'
 
-# --- MODEL DOWNLOAD ---
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model...")
-    os.makedirs('models', exist_ok=True) 
-    file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
-    url = f'https://drive.google.com/uc?id={file_id}'
-    gdown.download(url, MODEL_PATH, quiet=False)
-
-# --- THE DEEP BYPASS ---
-try:
-    print("Attempting model load with safe_mode=False...")
-    # safe_mode=False naye Keras ko purani files kholne ki ijazat deta hai
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False, safe_mode=False)
-    print("SUCCESS: Model loaded finally!")
-except Exception as e:
-    print(f"Loading failed again: {e}")
-    # Agar ye bhi fail ho toh hum model ko bina InputLayer ke load karenge
-    from tensorflow.keras.initializers import GlorotUniform
-    model = tf.keras.models.load_model(
-        MODEL_PATH, 
-        custom_objects={'GlorotUniform': GlorotUniform}, 
-        compile=False
-    )
-
-# --- LOAD CLASS NAMES ---
-try:
-    with open(JSON_PATH, 'r', encoding='utf-8') as f:
-        class_indices = json.load(f)
-    class_names = {v: k for k, v in class_indices.items()}
-except Exception as e:
-    print(f"JSON Error: {e}")
-    class_names = {}
-
-# --- DISEASE INFO DATA ---
+# --- 3. DISEASE INFO DATA (Ise upar hona chahiye taaki functions ise use kar sakein) ---
 DISEASE_INFO = {
     # --- APPLE ---
     "Apple___Apple_scab": {
@@ -247,16 +218,48 @@ DISEASE_INFO = {
     }
 }
 
+# --- MODEL DOWNLOAD ---
+if not os.path.exists(MODEL_PATH):
+    print("Downloading model...")
+    os.makedirs('models', exist_ok=True) 
+    file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    gdown.download(url, MODEL_PATH, quiet=False)
+
+# --- MODEL LOADING WITH BYPASS ---
+try:
+    print("Attempting model load...")
+    # safe_mode=False aur InputLayer bypass dono use kar rahe hain
+    model = tf.keras.models.load_model(
+        MODEL_PATH, 
+        compile=False, 
+        safe_mode=False,
+        custom_objects={'InputLayer': InputLayer}
+    )
+    print("SUCCESS: Model loaded finally!")
+except Exception as e:
+    print(f"Loading failed: {e}")
+    model = None
+
+# --- LOAD CLASS NAMES ---
+try:
+    with open(JSON_PATH, 'r', encoding='utf-8') as f:
+        class_indices = json.load(f)
+    class_names = {v: k for k, v in class_indices.items()}
+except Exception as e:
+    print(f"JSON Error: {e}")
+    class_names = {}
+
 # --- PREDICTION FUNCTION ---
 def predict_image(img_path):
-    # tf.keras.utils use karna safe hai Render ke liye
     img = tf.keras.utils.load_img(img_path, target_size=(224, 224))
     img_array = tf.keras.utils.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0) / 255.0
+    # Memory optimization: explicitly cast to float32
+    img_array = np.expand_dims(img_array, axis=0).astype('float32') / 255.0
     
     predictions = model.predict(img_array)
     predicted_class_index = np.argmax(predictions[0])
-    confidence = predictions[0][predicted_class_index] * 100
+    confidence = float(predictions[0][predicted_class_index] * 100)
     
     predicted_class = class_names.get(predicted_class_index, "Unknown")
     return predicted_class, confidence
@@ -292,6 +295,6 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
-    # Important: Render requires host 0.0.0.0 and dynamic port
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # threaded=False aur debug=False Render free tier ke liye best hai
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=False)
