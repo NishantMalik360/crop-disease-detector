@@ -1,19 +1,17 @@
 import os
+import gc # Memory management ke liye
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from flask import Flask, request, render_template, redirect
+from flask import Flask, request, render_template
 import numpy as np
-import json
-import gdown
-
-
+import tensorflow as tf
 
 app = Flask(__name__)
 
-app.config['UPLOAD_FOLDER'] = 'static/uploads/'
-
+# Model ko global rakhein par load sirf prediction ke waqt karein
 MODEL_PATH = 'models/crop_disease_model.h5'
-JSON_PATH = 'models/class_indices.json'
+model = None
 
 # --- 1. DISEASE INFO DATA (Ise upar hi rakhein) ---
 DISEASE_INFO = {
@@ -213,16 +211,10 @@ DISEASE_INFO = {
 }
 
 # --- 2. MODEL LOADING ---
-model = None
 def get_model():
     global model
     if model is None:
-        import tensorflow as tf
-        if not os.path.exists(MODEL_PATH):
-            os.makedirs('models', exist_ok=True)
-            gdown.download(id='1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ', output=MODEL_PATH, quiet=False)
-        
-        # Super safe loading
+        # Load lightweight model
         model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     return model
 
@@ -240,22 +232,20 @@ def index():
     if request.method == 'POST':
         file = request.files.get('file')
         if file:
-            if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                os.makedirs(app.config['UPLOAD_FOLDER'])
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-            file.save(filepath)
-            
-            # Prediction
-            import tensorflow as tf
-            m = get_model()
-            img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
+            # 1. Image ko bohot chota karke process karein
+            img = tf.keras.utils.load_img(file, target_size=(224, 224))
             img_array = tf.keras.utils.img_to_array(img) / 255.0
-            img_array = np.expand_dims(img_array, axis=0)
+            img_array = np.expand_dims(img_array, axis=0).astype('float32')
             
-            res = m.predict(img_array)
-            # Yahan bas basic result dikhayega check karne ke liye
-            return f"Prediction Done! Index: {np.argmax(res)}"
+            # 2. Predict
+            m = get_model()
+            predictions = m.predict(img_array)
+            idx = np.argmax(predictions[0])
+            
+            # 3. Memory Saaf Karein (Sabse Zaroori)
+            del img_array
+            gc.collect() 
+            
+            return f"Success! Predicted Class Index: {idx}"
+            
     return render_template('index.html')
-
-if __name__ == '__main__':
-    app.run()
