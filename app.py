@@ -1,10 +1,12 @@
+import os
+# SABSE PEHLE: Legacy Keras force karna zaroori hai imports se pehle
+os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
 from flask import Flask, request, render_template, redirect, url_for
+import tensorflow as tf
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
-import os
-os.environ['TF_USE_LEGACY_KERAS'] = '1'  # Force TensorFlow to use Keras 2
 import numpy as np
-import os
 import json
 import urllib.parse
 import gdown
@@ -18,13 +20,26 @@ MODEL_PATH = 'models/crop_disease_model.h5'
 # Check if model exists, if not, download it from Google Drive
 if not os.path.exists(MODEL_PATH):
     print("Model not found locally. Downloading from Google Drive...")
-    os.makedirs('models', exist_ok=True) # Ensure the folder exists
+    os.makedirs('models', exist_ok=True) 
     file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
     print("Download complete!")
 
-model = load_model(MODEL_PATH)
+# --- MODEL LOADING WITH WORKAROUND ---
+try:
+    # compile=False karne se 'batch_shape' wala error bypass ho jayega
+    model = load_model(MODEL_PATH, compile=False)
+    print("Model loaded successfully with compile=False!")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    # Backup load method
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+# Manually compile karna taaki prediction mein error na aaye
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+# ---------------------------------------
+
 with open('models/class_indices.json', 'r') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
