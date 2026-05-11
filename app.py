@@ -1,13 +1,20 @@
 import os
-# Force settings BEFORE anything else
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# Force TensorFlow to use its own built-in Keras
+os.environ['TF_USE_LEGACY_KERAS'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from flask import Flask, request, render_template, redirect, url_for
 import numpy as np
 import json
 import gdown
+
+# --- THE FIX ---
 import tensorflow as tf
+# Agar clear_session error de raha hai, toh ise try-except mein daal dein
+try:
+    tf.keras.backend.clear_session()
+except Exception:
+    pass
 
 # Memory clear karne ke liye
 tf.keras.backend.clear_session()
