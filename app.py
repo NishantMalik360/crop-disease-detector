@@ -1,10 +1,9 @@
 import os
-# SABSE PEHLE: Legacy Keras force karna (Imports se pehle)
+# Force legacy Keras settings
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
-# YAHAN CHANGE HAI: Humne direct import hata kar sirf numpy aur json rakha hai
 import numpy as np
 import json
 import gdown
@@ -12,40 +11,69 @@ import gdown
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
-# Load Model and Class Indices
+# Model loading section
 MODEL_PATH = 'models/crop_disease_model.h5'
 
-# Check if model exists
 if not os.path.exists(MODEL_PATH):
-    print("Model not found locally. Downloading from Google Drive...")
+    print("Downloading model...")
     os.makedirs('models', exist_ok=True) 
     file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
-    print("Download complete!")
 
-# --- MODEL LOADING (VERSION 2.15 STABLE) ---
+# --- RECURSION ERROR FIX ---
+# Humne yahan 'try-except' ko simple kar diya hai
 try:
-    # Hum 'tf.keras' use kar rahe hain bina kisi extra import ke
+    print("Attempting to load model...")
+    # compile=False is key for cross-version compatibility
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    print("Model loaded successfully!")
+    print("Success: Model loaded!")
 except Exception as e:
-    print(f"Loading failed: {e}")
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    print(f"Model load failed. Error: {e}")
+    # Agar ye fail hota hai, toh manually error throw karein loop banane ki jagah
+    raise e 
 
-# Re-compile manually
+# Manually compile after loading
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-# ---------------------------------------
 
-# JSON load
+# Load Class Names
 with open('models/class_indices.json', 'r', encoding='utf-8') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
 
-# --- NOTE FOR PREDICTION ---
-# Jab aap prediction function likhenge, toh wahan preprocessing ke liye ye use karein:
-# img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
-# img_array = tf.keras.utils.img_to_array(img)
+# --- ROUTES ---
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return redirect(request.url)
+    file = request.files['file']
+    if file.filename == '':
+        return redirect(request.url)
+    
+    if file:
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'])
+            
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+        
+        # PREDICTION
+        img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
+        img_array = tf.keras.utils.img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0) / 255.0
+        
+        predictions = model.predict(img_array)
+        result_index = np.argmax(predictions)
+        disease = class_names[result_index]
+        
+        return render_template('result.html', disease=disease, image_path=filepath)
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
 # Dictionary containing Causes, Fixes, and Tips (You will need to expand this for all 38 classes)
 DISEASE_INFO = {
