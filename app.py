@@ -1,16 +1,19 @@
 import os
-# Force Legacy Keras before everything
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
+# Force settings BEFORE anything else
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from flask import Flask, request, render_template, redirect, url_for
 import numpy as np
 import json
 import gdown
 import tensorflow as tf
-# Yahan change hai: Direct tf.keras ko define kar rahe hain
-import tensorflow.keras as keras
+
+# Memory clear karne ke liye
+tf.keras.backend.clear_session()
 
 app = Flask(__name__)
+
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
 MODEL_PATH = 'models/crop_disease_model.h5'
