@@ -1,0 +1,14 @@
+# Do not upload the massive dataset!
+dataset/
+# Do not upload python cache
+__pycache__/
+*.pyc
+# Virtual environments
+venv/
+env/
+myvenv/
+# Temporary user uploads
+static/uploads/*
+!static/uploads/.gitkeep
+# Ignore heavy models (unless you use Git LFS)
+models/*.h5

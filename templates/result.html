@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Detection Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Result: {{ disease.replace('___', ' ').replace('_', ' ') }}</h1>
+        <p style="font-weight: bold; color: #555;">Confidence: {{ "%.2f"|format(confidence) }}%</p>
+        
+        <img src="{{ '/' + img_path }}" class="result-image">
+
+        {% if disease == "Unknown / Not Confident" %}
+            <div class="info-box" style="border-left-color: #ff9800; background: #fff3e0;">
+                <p>This image looks unfamiliar, is blurry, or is not in our dataset.</p>
+                <a href="{{ google_link }}" target="_blank" class="btn google-btn">🔍 Search with Google Lens</a>
+            </div>
+        {% else %}
+            <div class="info-box">
+                <h3>⚠️ Why it causes:</h3>
+                <p>{{ info.cause }}</p>
+                
+                <h3>💊 How to fix:</h3>
+                <p>{{ info.fix }}</p>
+                
+                <h3>💡 Tips for care:</h3>
+                <p style="margin-bottom: 0;">{{ info.tips }}</p>
+            </div>
+        {% endif %}
+        
+        <br>
+        <a href="/" class="btn" style="margin-top: 15px;">Upload Another Image</a>
+    </div>
+</body>
+</html>

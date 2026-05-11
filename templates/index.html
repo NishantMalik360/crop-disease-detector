@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FloraGuard - Crop Disease Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 FloraGuard</h1>
+        <p>Upload a clear image of a crop leaf to detect diseases instantly.</p>
+        
+        <form class="upload-form" action="/" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit" class="btn">Analyze Leaf</button>
+        </form>
+    </div>
+</body>
+</html>
