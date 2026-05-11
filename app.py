@@ -1,6 +1,8 @@
 from flask import Flask, request, render_template, redirect, url_for
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
+import os
+os.environ['TF_USE_LEGACY_KERAS'] = '1'  # Force TensorFlow to use Keras 2
 import numpy as np
 import os
 import json
