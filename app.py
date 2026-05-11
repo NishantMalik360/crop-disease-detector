@@ -1,12 +1,11 @@
 import os
-# 1. Sabse pehle memory aur legacy settings (Keras 3 ko bypass karne ke liye)
+# Force legacy settings
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
-from tensorflow.keras.layers import InputLayer
+# Yahan badlav hai: Hum direct tf se sab uthayenge
 import numpy as np
 import json
 import gdown
