@@ -1,5 +1,6 @@
 import os
-import gc # Memory management ke liye
+import gc
+# RAM bachane ke liye TF ke heavy features off karein
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -9,9 +10,7 @@ import tensorflow as tf
 
 app = Flask(__name__)
 
-# Model ko global rakhein par load sirf prediction ke waqt karein
 MODEL_PATH = 'models/crop_disease_model.h5'
-model = None
 
 # --- 1. DISEASE INFO DATA (Ise upar hi rakhein) ---
 DISEASE_INFO = {
@@ -232,20 +231,29 @@ def index():
     if request.method == 'POST':
         file = request.files.get('file')
         if file:
-            # 1. Image ko bohot chota karke process karein
-            img = tf.keras.utils.load_img(file, target_size=(224, 224))
-            img_array = tf.keras.utils.img_to_array(img) / 255.0
-            img_array = np.expand_dims(img_array, axis=0).astype('float32')
-            
-            # 2. Predict
-            m = get_model()
-            predictions = m.predict(img_array)
-            idx = np.argmax(predictions[0])
-            
-            # 3. Memory Saaf Karein (Sabse Zaroori)
-            del img_array
-            gc.collect() 
-            
-            return f"Success! Predicted Class Index: {idx}"
-            
+            try:
+                # 1. Image processing (Halka rakhein)
+                img = tf.keras.utils.load_img(file, target_size=(224, 224))
+                img_array = tf.keras.utils.img_to_array(img) / 255.0
+                img_array = np.expand_dims(img_array, axis=0).astype('float32')
+                
+                # 2. Model load karein aur turant prediction karein
+                model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+                predictions = model.predict(img_array)
+                idx = int(np.argmax(predictions[0]))
+                
+                # 3. Memory Cleanup (Zaroori hai!)
+                del model
+                del img_array
+                tf.keras.backend.clear_session()
+                gc.collect()
+                
+                return f"Analysis Complete! Class Index: {idx}"
+            except Exception as e:
+                return f"Memory Error: {str(e)}. Try a smaller image."
+                
     return render_template('index.html')
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
