@@ -15,7 +15,6 @@ try:
     tf.keras.backend.clear_session()
 except Exception:
     pass
-
 # Memory clear karne ke liye
 tf.keras.backend.clear_session()
 
