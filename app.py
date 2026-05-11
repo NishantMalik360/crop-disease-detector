@@ -25,19 +25,21 @@ if not os.path.exists(MODEL_PATH):
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
 
-# --- MODEL LOADING WITH BYPASS ---
+# --- THE DEEP BYPASS ---
 try:
-    print("Attempting model load...")
+    print("Attempting model load with safe_mode=False...")
+    # safe_mode=False naye Keras ko purani files kholne ki ijazat deta hai
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False, safe_mode=False)
+    print("SUCCESS: Model loaded finally!")
+except Exception as e:
+    print(f"Loading failed again: {e}")
+    # Agar ye bhi fail ho toh hum model ko bina InputLayer ke load karenge
+    from tensorflow.keras.initializers import GlorotUniform
     model = tf.keras.models.load_model(
         MODEL_PATH, 
-        custom_objects={'InputLayer': InputLayer}, 
+        custom_objects={'GlorotUniform': GlorotUniform}, 
         compile=False
     )
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    print("SUCCESS: Model loaded!")
-except Exception as e:
-    print(f"Loading error: {e}")
-    model = None
 
 # --- LOAD CLASS NAMES ---
 try:
