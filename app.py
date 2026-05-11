@@ -4,8 +4,7 @@ os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
-# Yahan badlav kiya hai: Direct tf.keras use kar rahe hain
-from tensorflow.keras import preprocessing 
+# YAHAN CHANGE HAI: Humne direct import hata kar sirf numpy aur json rakha hai
 import numpy as np
 import json
 import gdown
@@ -25,26 +24,28 @@ if not os.path.exists(MODEL_PATH):
     gdown.download(url, MODEL_PATH, quiet=False)
     print("Download complete!")
 
-# --- MODEL LOADING (REVISED FOR VERSION 2.15) ---
+# --- MODEL LOADING (VERSION 2.15 STABLE) ---
 try:
-    # Yahan load_model ko tf.keras.models se call kiya hai
+    # Hum 'tf.keras' use kar rahe hain bina kisi extra import ke
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     print("Model loaded successfully!")
 except Exception as e:
     print(f"Loading failed: {e}")
-    # Backup: try loading without legacy flag if needed
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 # Re-compile manually
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 # ---------------------------------------
 
-# JSON load karte waat 'encoding' specify karna safe rehta hai
+# JSON load
 with open('models/class_indices.json', 'r', encoding='utf-8') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
 
-# Iske niche aapke Routes (@app.route) aayenge...
+# --- NOTE FOR PREDICTION ---
+# Jab aap prediction function likhenge, toh wahan preprocessing ke liye ye use karein:
+# img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
+# img_array = tf.keras.utils.img_to_array(img)
 
 # Dictionary containing Causes, Fixes, and Tips (You will need to expand this for all 38 classes)
 DISEASE_INFO = {
