@@ -1,14 +1,13 @@
 import os
-# SABSE PEHLE: Legacy Keras force karna zaroori hai imports se pehle
+# SABSE PEHLE: Legacy Keras force karna (Imports se pehle)
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 from flask import Flask, request, render_template, redirect, url_for
 import tensorflow as tf
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
+# Yahan badlav kiya hai: Direct tf.keras use kar rahe hain
+from tensorflow.keras import preprocessing 
 import numpy as np
 import json
-import urllib.parse
 import gdown
 
 app = Flask(__name__)
@@ -17,7 +16,7 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 # Load Model and Class Indices
 MODEL_PATH = 'models/crop_disease_model.h5'
 
-# Check if model exists, if not, download it from Google Drive
+# Check if model exists
 if not os.path.exists(MODEL_PATH):
     print("Model not found locally. Downloading from Google Drive...")
     os.makedirs('models', exist_ok=True) 
@@ -26,23 +25,26 @@ if not os.path.exists(MODEL_PATH):
     gdown.download(url, MODEL_PATH, quiet=False)
     print("Download complete!")
 
-# --- MODEL LOADING WITH WORKAROUND ---
+# --- MODEL LOADING (REVISED FOR VERSION 2.15) ---
 try:
-    # compile=False karne se 'batch_shape' wala error bypass ho jayega
-    model = load_model(MODEL_PATH, compile=False)
-    print("Model loaded successfully with compile=False!")
+    # Yahan load_model ko tf.keras.models se call kiya hai
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    print("Model loaded successfully!")
 except Exception as e:
-    print(f"Error loading model: {e}")
-    # Backup load method
+    print(f"Loading failed: {e}")
+    # Backup: try loading without legacy flag if needed
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
-# Manually compile karna taaki prediction mein error na aaye
+# Re-compile manually
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 # ---------------------------------------
 
-with open('models/class_indices.json', 'r') as f:
+# JSON load karte waat 'encoding' specify karna safe rehta hai
+with open('models/class_indices.json', 'r', encoding='utf-8') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
+
+# Iske niche aapke Routes (@app.route) aayenge...
 
 # Dictionary containing Causes, Fixes, and Tips (You will need to expand this for all 38 classes)
 DISEASE_INFO = {
