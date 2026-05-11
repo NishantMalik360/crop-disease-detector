@@ -7,6 +7,7 @@ import numpy as np
 import json
 import gdown
 import tensorflow as tf
+from tensorflow import keras  # Yeh line zaroori hai
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
@@ -216,17 +217,23 @@ model = None
 def get_model():
     global model
     if model is None:
+        # Check if model exists, if not download it
         if not os.path.exists(MODEL_PATH):
+            print("Downloading model...")
             os.makedirs('models', exist_ok=True)
             file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
-            gdown.download(f'https://drive.google.com/uc?id={file_id}', MODEL_PATH, quiet=False)
+            url = f'https://drive.google.com/uc?id={file_id}'
+            gdown.download(url, MODEL_PATH, quiet=False)
         
+        # FIX: Direct tf.keras.models use kar rahe hain
+        print("Loading model into memory...")
         model = tf.keras.models.load_model(
             MODEL_PATH, 
             compile=False, 
             safe_mode=False,
             custom_objects={'InputLayer': tf.keras.layers.InputLayer}
         )
+        print("Model loaded successfully!")
     return model
 
 # --- 3. CLASS NAMES LOAD ---
