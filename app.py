@@ -1,6 +1,6 @@
 import os
 import gc
-# RAM bachane ke liye TF ke heavy features off karein
+# RAM bachane ke liye background settings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -10,8 +10,8 @@ import tensorflow as tf
 
 app = Flask(__name__)
 
+# Model file ka path (Make sure ye path sahi ho)
 MODEL_PATH = 'models/crop_disease_model.h5'
-
 # --- 1. DISEASE INFO DATA (Ise upar hi rakhein) ---
 DISEASE_INFO = {
     # --- APPLE ---
@@ -229,31 +229,42 @@ except Exception:
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        file = request.files.get('file')
+        # Check if file is in request
+        if 'file' not in request.files:
+            return "No file part"
+        
+        file = request.files['file']
+        if file.filename == '':
+            return "No selected file"
+
         if file:
             try:
-                # 1. Image processing (Halka rakhein)
+                # 1. Image loading (Directly from memory to save disk space)
                 img = tf.keras.utils.load_img(file, target_size=(224, 224))
                 img_array = tf.keras.utils.img_to_array(img) / 255.0
                 img_array = np.expand_dims(img_array, axis=0).astype('float32')
                 
-                # 2. Model load karein aur turant prediction karein
+                # 2. Model load karein (Sirf prediction ke waqt taaki RAM khali rahe)
                 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
                 predictions = model.predict(img_array)
                 idx = int(np.argmax(predictions[0]))
                 
-                # 3. Memory Cleanup (Zaroori hai!)
+                # 3. Memory Cleanup (YE SABSE ZAROORI HAI)
                 del model
                 del img_array
                 tf.keras.backend.clear_session()
                 gc.collect()
                 
-                return f"Analysis Complete! Class Index: {idx}"
+                # Abhi ke liye sirf result dikhayega crash se bachne ke liye
+                return f"<h2>Analysis Complete!</h2><p>Disease Index: {idx}</p><a href='/'>Go Back</a>"
+            
             except Exception as e:
-                return f"Memory Error: {str(e)}. Try a smaller image."
+                # Agar RAM crash hui toh ye error dikhega
+                return f"Error: {str(e)}. Tip: Try a smaller image or restart server."
                 
     return render_template('index.html')
 
 if __name__ == '__main__':
+    # Render ke liye port binding
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
