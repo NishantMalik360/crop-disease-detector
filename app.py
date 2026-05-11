@@ -1,18 +1,16 @@
 import os
-# Force legacy settings
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
+# 1. Sabse pehle settings, taaki TF memory na khaaye
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from flask import Flask, request, render_template, redirect, url_for
-import tensorflow as tf
-# Yahan badlav hai: Hum direct tf se sab uthayenge
 import numpy as np
 import json
 import gdown
 import urllib.parse
 
-# 2. Memory saaf karein
-tf.keras.backend.clear_session()
+# Hum TensorFlow ko tabhi load karenge jab website start hogi
+import tensorflow as tf
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
@@ -20,7 +18,39 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 MODEL_PATH = 'models/crop_disease_model.h5'
 JSON_PATH = 'models/class_indices.json'
 
-# --- 3. DISEASE INFO DATA (Ise upar hona chahiye taaki functions ise use kar sakein) ---
+# --- MODEL DOWNLOAD ---
+if not os.path.exists(MODEL_PATH):
+    print("Downloading model...")
+    os.makedirs('models', exist_ok=True) 
+    file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    gdown.download(url, MODEL_PATH, quiet=False)
+
+# --- MODEL LOADING (Lazy Loading) ---
+model = None
+def get_model():
+    global model
+    if model is None:
+        print("Loading model for the first time...")
+        # Direct bypass for InputLayer using tf.keras
+        model = tf.keras.models.load_model(
+            MODEL_PATH, 
+            compile=False, 
+            safe_mode=False,
+            custom_objects={'InputLayer': tf.keras.layers.InputLayer}
+        )
+    return model
+
+# --- LOAD CLASS NAMES ---
+try:
+    with open(JSON_PATH, 'r', encoding='utf-8') as f:
+        class_indices = json.load(f)
+    class_names = {v: k for k, v in class_indices.items()}
+except Exception as e:
+    print(f"JSON Error: {e}")
+    class_names = {}
+
+# --- DISEASE INFO (Chota version rakhein RAM bachane ke liye) ---
 DISEASE_INFO = {
     # --- APPLE ---
     "Apple___Apple_scab": {
@@ -217,53 +247,6 @@ DISEASE_INFO = {
     }
 }
 
-# --- MODEL DOWNLOAD ---
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model...")
-    os.makedirs('models', exist_ok=True) 
-    file_id = '1U5qeI7-eS3EjC2NrVTdpDR_pUEobjHQQ'
-    url = f'https://drive.google.com/uc?id={file_id}'
-    gdown.download(url, MODEL_PATH, quiet=False)
-
-# --- MODEL LOADING WITH BYPASS ---
-try:
-    print("Attempting model load...")
-    # Humne InputLayer ko direct tf se pass kiya hai
-    model = tf.keras.models.load_model(
-        MODEL_PATH, 
-        compile=False, 
-        safe_mode=False,
-        custom_objects={'InputLayer': tf.keras.layers.InputLayer} 
-    )
-    print("SUCCESS: Model loaded finally!")
-except Exception as e:
-    print(f"Loading failed: {e}")
-    model = None
-
-# --- LOAD CLASS NAMES ---
-try:
-    with open(JSON_PATH, 'r', encoding='utf-8') as f:
-        class_indices = json.load(f)
-    class_names = {v: k for k, v in class_indices.items()}
-except Exception as e:
-    print(f"JSON Error: {e}")
-    class_names = {}
-
-# --- PREDICTION FUNCTION ---
-def predict_image(img_path):
-    img = tf.keras.utils.load_img(img_path, target_size=(224, 224))
-    img_array = tf.keras.utils.img_to_array(img)
-    # Memory optimization: explicitly cast to float32
-    img_array = np.expand_dims(img_array, axis=0).astype('float32') / 255.0
-    
-    predictions = model.predict(img_array)
-    predicted_class_index = np.argmax(predictions[0])
-    confidence = float(predictions[0][predicted_class_index] * 100)
-    
-    predicted_class = class_names.get(predicted_class_index, "Unknown")
-    return predicted_class, confidence
-
-# --- ROUTES ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -273,27 +256,31 @@ def index():
         if file.filename == '':
             return redirect(request.url)
         
-        if file and model:
+        if file:
             if not os.path.exists(app.config['UPLOAD_FOLDER']):
                 os.makedirs(app.config['UPLOAD_FOLDER'])
             
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filepath)
             
-            disease, confidence = predict_image(filepath)
+            # Predict
+            m = get_model()
+            img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
+            img_array = tf.keras.utils.img_to_array(img)
+            img_array = np.expand_dims(img_array, axis=0).astype('float32') / 255.0
             
-            if confidence < 60.0:
-                google_link = f"https://lens.google.com/uploadbyurl?url={request.url_root}{filepath}"
-                return render_template('result.html', disease="Unknown / Low Confidence", 
-                                     confidence=confidence, img_path=filepath, google_link=google_link)
+            predictions = m.predict(img_array)
+            idx = np.argmax(predictions[0])
+            disease = class_names.get(idx, "Unknown")
+            conf = float(predictions[0][idx] * 100)
             
-            info = DISEASE_INFO.get(disease, {"cause": "No data", "fix": "No data", "tips": "No data"})
-            return render_template('result.html', disease=disease, confidence=confidence, 
-                                 info=info, img_path=filepath)
+            info = DISEASE_INFO.get(disease, {"cause": "N/A", "fix": "N/A", "tips": "N/A"})
+            return render_template('result.html', disease=disease, confidence=conf, info=info, img_path=filepath)
             
     return render_template('index.html')
 
 if __name__ == '__main__':
+    # Render dynamic port binding
     port = int(os.environ.get("PORT", 5000))
-    # threaded=False aur debug=False Render free tier ke liye best hai
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=False)
+    app.run(host='0.0.0.0', port=port)
+
