@@ -1,5 +1,5 @@
 import os
-# Force legacy Keras settings
+# Force legacy settings BEFORE any other imports
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 from flask import Flask, request, render_template, redirect, url_for
@@ -8,20 +8,12 @@ import numpy as np
 import json
 import gdown
 
-# --- NEW SAFE IMPORT FOR KERAS ---
-try:
-    import keras
-    from keras.models import load_model
-except ImportError:
-    from tensorflow.keras.models import load_model
-# ---------------------------------
-
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads/'
 
 MODEL_PATH = 'models/crop_disease_model.h5'
 
-# Model download logic (as before)
+# Model download logic
 if not os.path.exists(MODEL_PATH):
     print("Downloading model...")
     os.makedirs('models', exist_ok=True) 
@@ -29,23 +21,26 @@ if not os.path.exists(MODEL_PATH):
     url = f'https://drive.google.com/uc?id={file_id}'
     gdown.download(url, MODEL_PATH, quiet=False)
 
-# --- RECURSION-FREE LOADING ---
+# --- THE ULTIMATE VERSION-PROOF LOADING ---
 try:
-    print("Loading model with Keras 2 legacy mode...")
-    # direct load_model use kar rahe hain jo upar import kiya hai
-    model = load_model(MODEL_PATH, compile=False)
+    print("Attempting to load model...")
+    # Kisi bhi extra import (keras.models) ki bajaye direct tf.keras use karein
+    # compile=False karne se batch_shape error bypass ho jata hai
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     print("Success: Model loaded!")
 except Exception as e:
-    print(f"Direct load failed, trying tf.keras backup... Error: {e}")
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    print(f"Loading error: {e}")
+    # Agar error aaye toh ye process ko crash nahi karega
+    model = None
 
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+if model:
+    # Load hone ke baad manually compile karein
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Load Class Names
 with open('models/class_indices.json', 'r', encoding='utf-8') as f:
     class_indices = json.load(f)
 class_names = {v: k for k, v in class_indices.items()}
-
 
 # --- ROUTES ---
 @app.route('/')
@@ -60,14 +55,14 @@ def predict():
     if file.filename == '':
         return redirect(request.url)
     
-    if file:
+    if file and model:
         if not os.path.exists(app.config['UPLOAD_FOLDER']):
             os.makedirs(app.config['UPLOAD_FOLDER'])
             
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
         
-        # PREDICTION
+        # PREDICTION using tf.keras.utils to be safe
         img = tf.keras.utils.load_img(filepath, target_size=(224, 224))
         img_array = tf.keras.utils.img_to_array(img)
         img_array = np.expand_dims(img_array, axis=0) / 255.0
@@ -77,10 +72,10 @@ def predict():
         disease = class_names[result_index]
         
         return render_template('result.html', disease=disease, image_path=filepath)
+    return "Model not loaded properly. Please check logs."
 
 if __name__ == '__main__':
     app.run(debug=True)
-
 # Dictionary containing Causes, Fixes, and Tips (You will need to expand this for all 38 classes)
 DISEASE_INFO = {
     # --- APPLE ---
