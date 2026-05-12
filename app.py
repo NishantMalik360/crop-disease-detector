@@ -28,14 +28,13 @@ def index():
 
         if file:
             try:
-                # ---> THE MASTER FIX: Bypassing tf.keras completely <---
-                import keras
+                # ---> Jadu Yahan Hai: Lazy Loading with TF 2.15 <---
                 import tensorflow as tf
                 
-                # 1. Image loading directly using pure Keras
+                # 1. Image loading
                 img = Image.open(file.stream).convert('RGB')
                 img = img.resize((224, 224))
-                img_array = keras.utils.img_to_array(img) / 255.0
+                img_array = tf.keras.utils.img_to_array(img) / 255.0
                 img_array = np.expand_dims(img_array, axis=0).astype('float32')
                 
                 # 2. Check & Download model
@@ -43,8 +42,8 @@ def index():
                     os.makedirs('models', exist_ok=True)
                     gdown.download(id=FILE_ID, output=MODEL_PATH, quiet=False)
 
-                # 3. Predict using pure Keras
-                model = keras.models.load_model(MODEL_PATH, compile=False)
+                # 3. Predict using TF 2.15 backend
+                model = tf.keras.models.load_model(MODEL_PATH, compile=False)
                 predictions = model.predict(img_array)
                 idx = int(np.argmax(predictions[0]))
                 
@@ -62,7 +61,7 @@ def index():
                 # 5. Cleanup
                 del model
                 del img_array
-                keras.backend.clear_session()
+                tf.keras.backend.clear_session()
                 gc.collect()
                 
                 return render_template('result.html', prediction=disease_name)
