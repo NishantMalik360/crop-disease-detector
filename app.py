@@ -1,7 +1,6 @@
 import os
 import gc
-import io
-import json # JSON file padhne ke liye
+import json
 from PIL import Image
 
 # RAM management settings
@@ -10,8 +9,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from flask import Flask, request, render_template
 import numpy as np
-import tensorflow as tf
-import gdown
+import gdown 
 
 app = Flask(__name__)
 
@@ -30,6 +28,9 @@ def index():
 
         if file:
             try:
+                # ---> JADU YAHAN HAI: Lazy Loading TensorFlow <---
+                import tensorflow as tf
+                
                 # 1. Image loading directly from memory
                 img = Image.open(file.stream).convert('RGB')
                 img = img.resize((224, 224))
@@ -48,12 +49,10 @@ def index():
                 
                 # 4. Disease Name Mapping
                 disease_name = f"Unknown Disease (Index: {idx})"
-                json_path = 'class_indices.json' # Aapki JSON file ka naam
+                json_path = 'class_indices.json' 
                 if os.path.exists(json_path):
                     with open(json_path, 'r') as f:
                         class_indices = json.load(f)
-                        # Keras JSON usually {"Apple_Scab": 0, "Healthy": 1} format mein hota hai
-                        # Reverse lookup karke index se naam nikal rahe hain
                         for key, value in class_indices.items():
                             if int(value) == idx:
                                 disease_name = key
@@ -65,7 +64,6 @@ def index():
                 tf.keras.backend.clear_session()
                 gc.collect()
                 
-                # Yahan aap apna original render_template('result.html', prediction=disease_name) laga sakte ho!
                 return render_template('result.html', prediction=disease_name)
             
             except Exception as e:
